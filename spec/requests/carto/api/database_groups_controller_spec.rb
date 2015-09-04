@@ -82,13 +82,14 @@ describe Carto::Api::DatabaseGroupsController do
     it '#update_permission granting read to a table' do
       bypass_named_maps
       @table_user_2 = create_table_with_options(@org_user_2)
+      vis_id = @table_user_2['table_visualization']['id']
 
       group = Carto::Group.where(organization_id: @carto_organization.id).first
       permission = { 'access' => 'r' }
       put api_v1_databases_group_update_permission_url(database_name: group.database_name, name: group.name, username: @org_user_2.username, table_name: @table_user_2['name']), permission.to_json, org_metadata_api_headers
       response.status.should == 200
 
-      permission = ::Permission.where(entity_id: @table_user_2['table_visualization']['id']).first
+      permission = ::Permission.where(entity_id: vis_id).first
       permission.should_not be_nil
 
       expected_acl = [
@@ -106,7 +107,6 @@ describe Carto::Api::DatabaseGroupsController do
       # URL generation for users of the granted group not table owners
       user = group.users.first
       user.id.should_not == @org_user_2.id
-      vis_id = @table_user_2['table_visualization']['id']
       # subdomain test simulation
       host = "#{user.organization.name}.localhost.lan"
       url = api_v1_visualizations_show_url(user_domain: user.username, id: vis_id, api_key: user.api_key).gsub('www.example.com', host)
@@ -118,6 +118,9 @@ describe Carto::Api::DatabaseGroupsController do
           "http://#{host}:#{Cartodb.config[:http_port]}/u/#{user.username}/tables/#{@org_user_2.username}.#{@table_user_2['name']}",
         ].should include(response.body[:url])
       end
+
+      shared_tables = Carto::VisualizationQueryBuilder.new.with_types([Carto::Visualization::TYPE_CANONICAL]).with_shared_with_user_id(user.id).build.all
+      shared_tables.collect(&:id).should include(vis_id)
     end
 
     it '#update_permission granting write to a table' do
@@ -171,7 +174,29 @@ describe Carto::Api::DatabaseGroupsController do
       response.status.should == 404
     end
 
-    # TODO: support for tables not yet registered?
+    it '#update_permission granting read to a table twice works (see #5370)' do
+      bypass_named_maps
+      @table_user_2 = create_table_with_options(@org_user_2)
+      vis_id = @table_user_2['table_visualization']['id']
+
+      group = Carto::Group.where(organization_id: @carto_organization.id).first
+      permission = { 'access' => 'r' }
+      put api_v1_databases_group_update_permission_url(database_name: group.database_name, name: group.name, username: @org_user_2.username, table_name: @table_user_2['name']), permission.to_json, org_metadata_api_headers
+      response.status.should == 200
+
+      delete api_v1_databases_group_destroy_permission_url(database_name: group.database_name, name: group.name, username: @org_user_2.username, table_name: @table_user_2['name']), '', org_metadata_api_headers
+      response.status.should == 200
+
+      put api_v1_databases_group_update_permission_url(database_name: group.database_name, name: group.name, username: @org_user_2.username, table_name: @table_user_2['name']), permission.to_json, org_metadata_api_headers
+      response.status.should == 200
+
+      user = group.users.first
+      user.id.should_not == @org_user_2.id
+
+      shared_tables = Carto::VisualizationQueryBuilder.new.with_types([Carto::Visualization::TYPE_CANONICAL]).with_shared_with_user_id(user.id).build.all
+      shared_tables.collect(&:id).should include(vis_id)
+    end
+
 
     it '#remove_member from username' do
       group = Carto::Group.where(organization_id: @carto_organization.id).first
