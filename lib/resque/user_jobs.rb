@@ -207,7 +207,16 @@ module Resque
           UserMailer.trending_map(visualization, mapviews, vis_preview_image).deliver
         end
       end
+    end
 
+    module Metadata
+      module UserMetadataPropagation
+        extend ::Resque::Metrics
+        @queue = :users
+
+        def self.perform(user_id)
+        end
+      end
     end
   end
 end
