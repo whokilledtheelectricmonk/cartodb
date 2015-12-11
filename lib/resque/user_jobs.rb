@@ -214,7 +214,15 @@ module Resque
         extend ::Resque::Metrics
         @queue = :users
 
+        USER_METADATA_PROPAGATION_THRESHOLD = 8.hours
+
+        def self.trigger_metadata_propagation?(user)
+          user.dashboard_viewed_at.nil? || user.dashboard_viewed_at < Time.now - USER_METADATA_PROPAGATION_THRESHOLD
+        end
+
         def self.perform(user_id)
+          user = ::User.where(id: user_id).first
+          CartoDB::Hubspot.send_db_size(user)
         end
       end
     end
