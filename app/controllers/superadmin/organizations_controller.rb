@@ -17,6 +17,7 @@ class Superadmin::OrganizationsController < Superadmin::SuperadminController
   end
 
   def create
+    Rollbar.report_message('1 - OrganizationsController#create start', 'debug')
     @organization = Organization.new
     @organization.set_fields_from_central(params[:organization], :create)
     if @organization.save && params[:organization][:owner_id].present? && @organization.owner.nil?
@@ -24,6 +25,7 @@ class Superadmin::OrganizationsController < Superadmin::SuperadminController
       uo = CartoDB::UserOrganization.new(@organization.id, params[:organization][:owner_id])
       uo.promote_user_to_admin
     end
+    Rollbar.report_message('1 - OrganizationsController#create end', 'debug')
     respond_with(:superadmin, @organization)
   rescue => e
     begin

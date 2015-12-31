@@ -34,11 +34,16 @@ class Superadmin::UsersController < Superadmin::SuperadminController
   end
 
   def update
+    Rollbar.report_message('2 - UsersController#update start', 'debug')
     @user.set_fields_from_central(params[:user], :update)
     @user.set_relationships_from_central(params[:user])
 
     @user.save
+    Rollbar.report_message('2 - UsersController#update end', 'debug')
     respond_with(:superadmin, @user)
+  rescue => e
+    Rollbar.report_message('2 - UsersController#update error', 'error', { error: e.inspect, backtrace: e.backtrace.join("\n") })
+    raise e
   end
 
   def destroy
