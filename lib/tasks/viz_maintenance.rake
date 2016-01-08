@@ -62,6 +62,46 @@ namespace :cartodb do
       puts "\n> #{Time.now}\nFinished ##{count} items"
     end
 
+    task :export_full_visualization, [:vis_id] => :environment do |_, args|
+      vis_id = args[:vis_id]
+      raise "vis_id argument missing" unless vis_id
+
+      directory = vis_id
+      raise "Directory #{directory} already exists" if File.exist?(directory)
+
+      zip_file = "#{directory}.zip"
+      raise "File #{zip_file} already exists" if File.exist?(zip_file)
+
+      Dir.mkdir(directory)
+
+      json_filename = "#{directory}/#{vis_id}.json"
+      format = 'shp'
+
+      visualization = Carto::Visualization.find(vis_id)
+      File.open(json_filename, "w") do |file|
+        file.write(Carto::VisualizationsExportService.new.export_to_json(visualization))
+      end
+
+      tables = visualization.related_tables
+
+      require 'open-uri'
+
+      user = visualization.user
+      tables.each do |table|
+        url = "#{table.service.export_sql_api_url(user, format)}&api_key=#{user.api_key}"
+        open("#{directory}/#{table.name}.#{format}", 'wb') do |file|
+          file << open(url).read
+        end
+      end
+
+      require_dependency 'zip_file_generator'
+      ZipFileGenerator.new(directory, zip_file).write
+
+      require 'fileutils'
+      FileUtils.rm_rf(directory)
+      FileUtils.rm_rf(directory)
+    end
+
     desc "Outputs a visualization JSON. Usage example: `bundle exec rake cartodb:vizs:export_user_visualization_json['c54710aa-ad8f-11e5-8046-080027880ca6'] > c54710aa-ad8f-11e5-8046-080027880ca6.json`"
     task :export_user_visualization_json, [:vis_id] => :environment do |_, args|
       # Output is meant to be forwarded to a file, so we don't want logging output

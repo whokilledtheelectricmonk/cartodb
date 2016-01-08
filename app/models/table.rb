@@ -1313,7 +1313,15 @@ class Table
     name.tr('_', ' ').split.map(&:capitalize).join(' ')
   end
 
+  def export_sql_api_url(user, format = 'shp')
+    "#{ sql_api_url("SELECT * FROM #{ owner.sql_safe_database_schema }.#{ name }", user) }&format=#{format}"
+  end
+
   private
+
+  def sql_api_url(query, user)
+    "#{ ApplicationHelper.sql_api_template("public").gsub! '{user}', user.username }#{ Cartodb.config[:sql_api]['public']['endpoint'] }?q=#{ URI::encode query }"
+  end
 
   def previous_privacy
     # INFO: @user_table.initial_value(:privacy) weirdly returns incorrect value so using changes index instead

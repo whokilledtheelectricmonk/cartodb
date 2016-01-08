@@ -35,6 +35,8 @@ gem 'therubyracer',            '0.12.1' # Required by ejs
 
 gem 'net-ldap',                '0.11'
 
+gem 'rubyzip',                 '>= 1.0.0'
+
 group :production, :staging do
   gem 'unicorn',               '4.8.2'
   gem 'unicorn-worker-killer'
