@@ -68,6 +68,7 @@ class Api::Json::SynchronizationsController < Api::ApplicationController
       begin
         enqueued = false
         member = Synchronization::Member.new(id: params[:id]).fetch
+        sync_modified = (from_sync_now && member.state == CartoDB::Synchronization::Member::STATE_MODIFIED)
         return head(401) unless member.authorize?(current_user)
 
         # @see /services/synchronizer/lib/synchronizer/collection.rb -> enqueue_rate_limited()
@@ -77,7 +78,7 @@ class Api::Json::SynchronizationsController < Api::ApplicationController
           })
           if platform_limit.is_within_limit?
             @stats_aggregator.timing('enqueue') do
-              member.enqueue
+              member.enqueue sync_modified: sync_modified
             end
             enqueued = true
             platform_limit.increment!

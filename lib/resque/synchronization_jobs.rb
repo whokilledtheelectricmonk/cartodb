@@ -9,7 +9,8 @@ module Resque
     def self.perform(options = {})
       run_action(options, @queue, lambda { |options| 
         CartoDB::Synchronization::Member.new(
-          id: options.symbolize_keys[:job_id]
+          id: options.symbolize_keys[:job_id],
+          sync_modified: options.symbolize_keys[:sync_modified]
         ).fetch.run
       })
     end

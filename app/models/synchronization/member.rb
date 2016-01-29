@@ -36,6 +36,7 @@ module CartoDB
       STATE_SYNCING   = 'syncing'
       STATE_SUCCESS   = 'success'
       STATE_FAILURE   = 'failure'
+      STATE_MODIFIED  = 'modified'
 
       attribute :id,                      String
       attribute :name,                    String
@@ -78,6 +79,7 @@ module CartoDB
         self.service_name     ||= nil
         self.service_item_id  ||= nil
         self.checksum         ||= ''
+        @sync_modified        = attributes[:sync_modified]
 
         raise InvalidInterval.new unless self.interval >= MIN_INTERVAL_SECONDS
 
@@ -131,19 +133,19 @@ module CartoDB
         self
       end
 
-      def enqueue
-        Resque.enqueue(Resque::SynchronizationJobs, job_id: id)
+      def enqueue(sync_modified: false)
+        Resque.enqueue(Resque::SynchronizationJobs, job_id: id, sync_modified: sync_modified)
         self.state = CartoDB::Synchronization::Member::STATE_QUEUED
         self.store
       end
 
       # @return bool
       def can_manually_sync?
-        # Last sync ok, last sync failed, or too much time in queued state
-        (  self.state == STATE_SUCCESS ||
+        # Last sync ok, failed or schema modified, or too much time in queued state
+        (( self.state == STATE_SUCCESS ||
            self.state == STATE_FAILURE ||
           (self.state == STATE_QUEUED && self.updated_at + SYNC_NOW_TIMESPAN < Time.now)
-         ) && (self.ran_at + SYNC_NOW_TIMESPAN < Time.now)
+         ) && (self.ran_at + SYNC_NOW_TIMESPAN < Time.now)) || self.state == STATE_MODIFIED
       end
 
       # @return bool
@@ -215,7 +217,7 @@ module CartoDB
         )
 
         database = user.in_database
-        importer = CartoDB::Synchronization::Adapter.new(name, runner, database, user)
+        importer = CartoDB::Synchronization::Adapter.new(name, runner, database, user, @sync_modified)
 
         importer.run
         self.ran_at   = Time.now
@@ -223,6 +225,8 @@ module CartoDB
 
         if importer.success?
           set_success_state_from(importer)
+        elsif importer.modified?
+          set_modified_state_from(importer)
         else
           set_failure_state_from(importer)
         end
@@ -362,6 +366,16 @@ module CartoDB
         geocode_table
       rescue
         self
+      end
+
+      def set_modified_state_from(importer)
+        log.append     '******** synchronization interrupted, schema modified ********'
+        self.log_trace      = importer.runner_log_trace
+        log.append     "*** Runner log: #{self.log_trace} \n***" unless self.log_trace.nil?
+        self.state          = STATE_MODIFIED
+        self.error_code     = nil
+        self.error_message  = nil
+        self.retried_times  = 0
       end
 
       def set_failure_state_from(importer)
