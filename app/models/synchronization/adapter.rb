@@ -7,12 +7,14 @@ module CartoDB
 
       attr_accessor :table
 
-      def initialize(table_name, runner, database, user)
-        @table_name   = table_name
-        @runner       = runner
-        @database     = database
-        @user         = user
-        @failed       = false
+      def initialize(table_name, runner, database, user, sync_modified)
+        @table_name     = table_name
+        @runner         = runner
+        @database       = database
+        @user           = user
+        @sync_modified  = sync_modified
+        @failed         = false
+        @modified       = false
       end
 
       def run(&tracker)
@@ -27,9 +29,44 @@ module CartoDB
           end
           copy_privileges(user.database_schema, table_name, result.schema, result.table_name)
           index_statements = generate_index_statements(user.database_schema, table_name)
-          overwrite(table_name, result)
+          temporary_name = overwrite(table_name, result)
           cartodbfy(table_name)
           run_index_statements(index_statements)
+
+          if @sync_modified
+            # This is a sync initiated by the user, aware that the schema is changing
+            deleted_columns = []
+          else
+            # The new data table might have some columns removed (or types changed).
+            # In this case, rebuilding the indices can fail (if indexing an affected
+            # column) and maps can stop working (the data column is no longer available).
+            # Rollback changes and generate an error if this happens.
+
+            # Compare tuples (column_name, column_type)
+            old_columns = database.schema(temporary_name)
+            old_columns = old_columns.map{ |e| [e[0], e[1][:db_type]]}
+
+            new_columns = database.schema(table_name)
+            new_columns = new_columns.map{ |e| [e[0], e[1][:db_type]]}
+
+            deleted_columns = old_columns - new_columns
+          end
+
+          if deleted_columns.empty?
+            # Commit
+            drop(temporary_name)
+          else
+            # Rollback
+            database.transaction do
+              drop(table_name)
+              rename(temporary_name, table_name)
+            end
+            @modified = true
+            runner.results.push(CartoDB::Importer2::Result.new(error_code: 2010))
+            data_for_exception = "Columns have been deleted from synced table '#{table_name}'\n"
+            data_for_exception << "Affected columns: #{deleted_columns.map{ |e| e[0]}}"
+            raise data_for_exception
+          end
         end
         self
       rescue => exception
@@ -52,11 +89,12 @@ module CartoDB
         # and finally rename newly moved table to original name
         database.transaction do
           rename(table_name, temporary_name) if exists?(table_name)
-          drop(temporary_name) if exists?(temporary_name)
           move_to_schema(result)
           rename(result.table_name, table_name)
         end
         fix_oid(table_name)
+
+        temporary_name
       rescue => exception
         puts "Sync overwrite ERROR: #{exception.message}: #{exception.backtrace.join}"
         CartoDB.notify_error('Error in sync cartodbfy',
@@ -102,6 +140,10 @@ module CartoDB
 
       def success?
         (!@failed  && runner.success?)
+      end
+
+      def modified?
+        @modified
       end
 
       def etag

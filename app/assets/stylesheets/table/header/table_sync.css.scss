@@ -110,6 +110,13 @@
           border-color:rgba(black, .75);
         }
       }
+
+      &.modified {
+        span.point {
+          @include background(linear-gradient(rgb(254, 255, 112), #d1c631));
+          border-color:rgba(black, .75);
+        }
+      }
     }
 
     p {

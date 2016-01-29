@@ -67,7 +67,7 @@ class Api::Json::SynchronizationsController < Api::ApplicationController
 
       begin
         enqueued = false
-        member = Synchronization::Member.new(id: params[:id]).fetch
+        member = Synchronization::Member.new(id: params[:id], sync_modified: from_sync_now).fetch
         return head(401) unless member.authorize?(current_user)
 
         # @see /services/synchronizer/lib/synchronizer/collection.rb -> enqueue_rate_limited()

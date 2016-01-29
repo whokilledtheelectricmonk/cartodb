@@ -130,6 +130,7 @@ $bannedColor: #E1A7A5;
 .DatasetsList-itemStatus.is-banned { color: $bannedColor }
 .DatasetsList-itemStatus.is-failure { color: $cHighlight-negative }
 .DatasetsList-itemStatus.is-success { color: $cHighlight-positive }
+.DatasetsList-itemStatus.is-modified { color: $cHighlight-caution }
 .DatasetsList-itemInfo {
   position: relative;
   @include display-flex();
